@@ -57,7 +57,7 @@ This file provides:
 
 **Why #5**: While small, this file is architecturally crucial. It establishes the pattern that all ~30+ node implementation files follow (nodes-activations.h/cc, nodes-matrixmultiply.h/cc, etc.). Understanding this macro is key to understanding how to extend DyNet with new operations.
 
-### 6. **dynet/param-nodes.h** + **dynet/param-nodes.cc** (~114 lines total)
+### 6. **dynet/param-nodes.h** + **dynet/param-nodes.cc** (~114 + ~342 lines)
 **Conceptual Role**: Bridge between learnable parameters and the computation graph.
 
 These files define:
@@ -68,7 +68,7 @@ These files define:
 
 **Why #6**: Parameters are special nodes in the graph that need gradient accumulation for training. This file defines how learnable weights connect to the autograd system, which is fundamental to neural network training.
 
-### 7. **dynet/model.h** + **dynet/model.cc** (~300+ lines combined)
+### 7. **dynet/model.h** + **dynet/model.cc** (~762 + ~873 lines)
 **Conceptual Role**: Parameter storage and management.
 
 These files define:
