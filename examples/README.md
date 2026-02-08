@@ -7,6 +7,8 @@ Documentation should include directions on how to download standard datasets, ru
 A good example of a simple README is in the [mnist](https://github.com/clab/dynet/tree/master/examples/mnist/) directory.
 Contributions to adding these are welcome!
 
+**Comparing DyNet with PyTorch?** Check out the [comprehensive comparison guide](http://dynet.readthedocs.io/en/latest/dynet_vs_pytorch.html) and the [MNIST benchmark comparison](https://github.com/clab/dynet/tree/master/examples/mnist/basic-mnist-benchmarks).
+
 Note that these examples are meant to be minimal examples, not necessarily the state of the art.
 Concurrently, we are working on creating a state-of-the-art model repository.
 In the mean time, you can browse the [many research projects](http://dynet.io/complex/) that use DyNet and find one that fits your needs.

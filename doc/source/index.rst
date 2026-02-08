@@ -39,8 +39,9 @@ And get the basic information to create programs and use models:
    python_ref
    cpp_ref
    examples
+   dynet_vs_pytorch
 
-Mode advanced topics are below:
+More advanced topics are below:
 
 .. toctree::
    :maxdepth: 2
