@@ -1,6 +1,8 @@
 # MNIST Benchmarks
 
-Here is the comparison between Dynet and PyTorch on the "Hello World" example of deep learning : MNIST digit classification.
+Here is the comparison between Dynet and PyTorch on the "Hello World" example of deep learning: MNIST digit classification.
+
+For a comprehensive comparison of DyNet vs PyTorch including design philosophy, use cases, and code examples, see the [DyNet vs PyTorch documentation](http://dynet.readthedocs.io/en/latest/dynet_vs_pytorch.html).
 
 ## Usage (Dynet)
 

@@ -34,6 +34,8 @@ You can find tutorials about using DyNet [here (C++)](http://dynet.readthedocs.i
 
 One aspect that sets DyNet apart from other tookits is the **auto-batching** feature. See the [documentation](http://dynet.readthedocs.io/en/latest/minibatch.html) about batching.
 
+If you're deciding between DyNet and other frameworks like PyTorch, check out our [comprehensive comparison guide](http://dynet.readthedocs.io/en/latest/dynet_vs_pytorch.html).
+
 The `example` folder contains a variety of examples in C++ and python.
 
 
