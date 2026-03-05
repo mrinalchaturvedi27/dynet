@@ -51,6 +51,13 @@ More advanced topics are below:
    unorthodox
    projects
 
+Research and integration analyses:
+
+.. toctree::
+   :maxdepth: 2
+
+   fluxions_research
+
 And we welcome your contributions!
 
 .. toctree::

@@ -2,7 +2,7 @@
 
 ## 📋 Complete Documentation Suite
 
-This repository contains **3,181 lines** of architectural analysis documentation across **4 comprehensive documents**.
+This repository contains **3,181 lines** of architectural analysis documentation across **4 comprehensive documents**, plus a dedicated Fluxions integration research analysis (~496 lines).
 
 ### Quick Navigation
 
@@ -12,6 +12,7 @@ This repository contains **3,181 lines** of architectural analysis documentation
 | **[ARCHITECTURAL_ANALYSIS.md](./ARCHITECTURAL_ANALYSIS.md)** | File-by-file analysis | 1,583 | 3-4 hrs |
 | **[REBUILD_GUIDE.md](./REBUILD_GUIDE.md)** | Practical rebuild roadmap | 511 | 1-2 hrs |
 | **[DEPENDENCY_MAP.md](./DEPENDENCY_MAP.md)** | Visual dependency diagrams | 747 | 1-2 hrs |
+| **[doc/fluxions_dynet_mlpack_webgpu.md](./doc/fluxions_dynet_mlpack_webgpu.md)** | DyNet + mlpack integration research & Phase 3 WebGPU analysis | ~496 | 45 min |
 
 ---
 
