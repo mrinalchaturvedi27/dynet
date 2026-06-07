@@ -846,6 +846,147 @@ struct ComputationGraph {
 
 This is intentionally simpler than DyNet. It is enough to validate autograd behavior before introducing memory pools.
 
+### Canonical Project Architecture
+
+Recommended source layout:
+
+```
+dymini/
+├── core/
+│   ├── tensor
+│   ├── dim / shape
+│   └── errors
+│
+├── graph/
+│   ├── computation_graph
+│   ├── expression
+│   ├── node
+│   └── execution
+│
+├── ops/
+│   ├── input / parameter
+│   ├── arithmetic
+│   ├── matmul
+│   ├── activations
+│   ├── reductions
+│   └── losses
+│
+├── model/
+│   ├── parameter
+│   ├── parameter_collection
+│   ├── module
+│   ├── linear
+│   └── sequential
+│
+├── optim/
+│   ├── optimizer
+│   ├── sgd
+│   └── adam
+│
+├── data/
+│   ├── mnist_loader
+│   └── batch
+│
+├── examples/
+│   ├── xor
+│   └── mnist_mlp
+│
+├── benchmarks/
+│   ├── mnist_cpp
+│   └── mnist_pytorch_baseline.py
+│
+└── tests/
+    ├── tensor_tests
+    ├── gradcheck_tests
+    ├── graph_tests
+    └── optimizer_tests
+```
+
+Core roles:
+
+- `Tensor`: owns numeric storage only. It should not own autograd history.
+- `Parameter`: owns persistent trainable tensor value and gradient. It outlives any single graph.
+- `Node`: represents one operation. It owns temporary forward value, temporary gradient, input references, and local forward/backward behavior.
+- `Expression`: lightweight user-facing handle containing graph identity and node identity.
+- `ComputationGraph`: owns nodes for one forward/backward pass and clears them after the batch.
+- `Module`: reusable model component with `forward(graph, input)` and `parameters()`.
+- `Optimizer`: updates persistent parameters and does not depend on graph internals.
+
+Dependency direction:
+
+```
+core
+  ↓
+graph
+  ↓
+ops
+  ↓
+model
+  ↓
+optim
+  ↓
+examples / benchmarks
+```
+
+More precise dependency rules:
+
+- `Tensor` is used by `Parameter` and `Node`.
+- `Parameter` is used by parameter nodes, modules, and optimizers.
+- `Node` is owned by `ComputationGraph` and subclassed by ops.
+- `ComputationGraph` creates nodes and returns `Expression` handles.
+- `Expression` is used by ops and `Module::forward`.
+- Ops create graph nodes and return expressions.
+- Modules own parameters and use ops to build graphs.
+- Optimizers update parameters only; they should not know about `ComputationGraph`.
+
+Canonical runtime flow:
+
+```cpp
+Model model;
+Optimizer opt(model.parameters());
+
+for each batch:
+  ComputationGraph cg;
+
+  Expression x = input(cg, batch_x);
+  Expression y = model.forward(cg, x);
+  Expression loss = softmax_cross_entropy(y, batch_labels);
+
+  cg.forward(loss);
+  cg.backward(loss);
+
+  opt.step();
+  opt.zero_grad();
+```
+
+Critical lifetime rules:
+
+- Parameters persist across training.
+- Optimizer state persists across training.
+- Computation graphs are batch-local.
+- Expressions die with their graph.
+- Node values and node gradients die with their graph.
+
+Canonical shape convention:
+
+```
+Dense activations: features x batch
+MNIST input: 784 x B
+Hidden: 128 x B
+Logits: 10 x B
+Bias: features x 1
+```
+
+Architectural invariant:
+
+```
+Tensor = numeric storage
+Node = operation + backward rule
+ComputationGraph = node ownership and lifetime
+Expression = user handle
+Parameter = persistent trainable state
+```
+
 ### Phase A: Tensor + Tiny Autograd Core
 
 Build this before thinking about memory pools, datasets, or MNIST.
