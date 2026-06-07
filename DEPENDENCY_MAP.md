@@ -745,3 +745,217 @@ dynet/
 **Biggest Win**: AlignedMemoryPool (linear allocation)
 
 **Ready to rebuild!** Follow this guide, refer to `ARCHITECTURAL_ANALYSIS.md` for details, and consult the original code when stuck.
+
+---
+
+## Side Project Roadmap: DyNet-Inspired Minimal Dynamic Graph Library
+
+This roadmap is for a smaller project inspired by DyNet, not a full DyNet rebuild. The goal is to learn and build a usable dynamic computation graph library while avoiding DyNet's full memory manager, device abstraction, autobatching, CUDA backend, and large node catalog until they are justified by profiling or project scope.
+
+### Guiding Principle
+
+Use Eigen for numeric storage and matrix operations first. Implement custom ownership and lifetime rules only for the computation graph itself.
+
+Eigen can handle:
+- Matrix/vector buffers
+- Resizing and alignment for Eigen objects
+- Matrix multiplication and elementwise operations
+- Expression-template optimization
+
+The project still needs to handle:
+- Graph node ownership
+- Forward value caching
+- Gradient storage and accumulation
+- Reverse topological traversal
+- Parameter lifetime separate from graph lifetime
+- Clearing short-lived graph state after each example or batch
+
+### Minimal Architecture
+
+```
+┌─────────────────────┐
+│      Parameter      │  Owns persistent trainable Eigen values + grads
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│        Node         │  Owns temporary forward value + local backward rule
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│  ComputationGraph   │  Owns nodes for one forward/backward pass
+└──────────┬──────────┘
+           │
+           ▼
+┌─────────────────────┐
+│      Expression     │  Lightweight user-facing handle to a graph node
+└─────────────────────┘
+```
+
+Recommended first implementation:
+
+```cpp
+using Matrix = Eigen::MatrixXf;
+
+struct Parameter {
+  Matrix value;
+  Matrix grad;
+};
+
+struct Node {
+  Matrix value;
+  Matrix grad;
+  std::vector<Node*> inputs;
+  virtual void forward() = 0;
+  virtual void backward() = 0;
+  virtual ~Node() = default;
+};
+
+struct ComputationGraph {
+  std::vector<std::unique_ptr<Node>> nodes;
+
+  template <class NodeT, class... Args>
+  NodeT* add_node(Args&&... args) {
+    auto node = std::make_unique<NodeT>(std::forward<Args>(args)...);
+    NodeT* raw = node.get();
+    nodes.push_back(std::move(node));
+    return raw;
+  }
+
+  void clear() {
+    nodes.clear();
+  }
+};
+```
+
+This is intentionally simpler than DyNet. It is enough to validate autograd behavior before introducing memory pools.
+
+### Phase A: Tiny Autograd Core
+
+Build this before thinking about memory pools.
+
+- [ ] Define `Parameter`, `Node`, `Expression`, and `ComputationGraph`
+- [ ] Store graph nodes in creation order
+- [ ] Implement `forward(target)` by evaluating nodes from first to target
+- [ ] Implement `backward(loss)` by iterating nodes in reverse order
+- [ ] Use `+=` for gradient accumulation, never overwrite input gradients
+- [ ] Clear the graph after each training example or mini-batch
+
+Core operations:
+- [ ] Input node
+- [ ] Parameter node
+- [ ] Add
+- [ ] Matrix multiply
+- [ ] Tanh
+- [ ] Sum / scalar loss
+- [ ] Mean squared error or binary cross entropy
+
+Milestone:
+- [ ] Train XOR or a tiny regression model successfully
+
+### Phase B: Usable Training Loop
+
+Once the graph is correct, add the smallest model/training surface.
+
+- [ ] `ParameterCollection` or `Model` that owns all parameters
+- [ ] Simple random initializers
+- [ ] `zero_grad()`
+- [ ] `SimpleSGD`
+- [ ] Gradient clipping by global norm
+- [ ] Loss reporting utilities
+- [ ] Finite-difference gradient checker for a few ops
+
+Milestone:
+- [ ] Train a 1-hidden-layer MLP on a toy classification dataset
+
+### Phase C: Better Operations
+
+Add only operations needed by real examples.
+
+- [ ] ReLU
+- [ ] Sigmoid
+- [ ] Softmax
+- [ ] Negative log softmax loss
+- [ ] Concatenate
+- [ ] Pick/select rows or columns
+- [ ] Dropout with train/eval mode
+
+Milestone:
+- [ ] Train a small MLP classifier with softmax loss
+
+### Phase D: RNN-Style Dynamic Graph Demo
+
+This is where the DyNet inspiration becomes visible. The point is not speed yet; the point is natural dynamic graph construction.
+
+- [ ] Add lookup parameters / embedding table
+- [ ] Add sequence example code that rebuilds a graph per sentence
+- [ ] Implement a simple RNN cell
+- [ ] Implement a minimal LSTM cell only after the simple RNN works
+- [ ] Add save/load for parameters
+
+Milestone:
+- [ ] Train a character-level language model or sequence classifier
+
+### Phase E: Memory Improvements Only If Needed
+
+Do not start here. First profile.
+
+Start with:
+- [ ] `std::vector<std::unique_ptr<Node>>`
+- [ ] Eigen-owned `Matrix` values inside each node
+- [ ] `graph.clear()` between iterations
+
+Then optimize in this order:
+- [ ] Reserve graph node capacity with `nodes.reserve(n)`
+- [ ] Replace scattered node allocations with `std::deque<NodeStorage>` or a simple typed arena
+- [ ] Reuse gradient/value matrices where shape is stable
+- [ ] Add a graph-local bump allocator only if allocation dominates runtime
+
+Avoid initially:
+- [ ] DyNet-style four-pool device memory
+- [ ] GPU memory abstractions
+- [ ] Custom aligned memory pools
+- [ ] Autobatching
+- [ ] Cross-device tensor handles
+
+Milestone:
+- [ ] Demonstrate that the simple implementation is correct, then use profiling data to justify each memory optimization
+
+### Recommended Build Order
+
+1. Eigen tensor wrapper or direct `Eigen::MatrixXf`
+2. `Parameter`
+3. `Node`
+4. `ComputationGraph`
+5. `Expression`
+6. Add/matmul/tanh/loss nodes
+7. Reverse-mode autodiff
+8. SGD trainer
+9. Gradient checker
+10. Toy examples
+11. RNN example
+12. Memory pool experiments
+
+### Non-Goals for the First Version
+
+- No CUDA
+- No autobatching
+- No Python bindings
+- No custom allocator unless profiling proves it matters
+- No full DyNet API compatibility
+- No large operation catalog
+- No advanced optimizers beyond SGD/Adam until the core is stable
+
+### Success Criteria
+
+The side project is successful when:
+
+- A user can write a model by composing `Expression`s dynamically
+- Forward and backward passes are correct for branching graphs
+- Parameter gradients accumulate correctly across repeated parameter use
+- The graph can be cleared without destroying model parameters
+- A small MLP and a small RNN-style model train end to end
+- The code remains simple enough to explain and modify
+
+The main lesson from DyNet is not "start with a complex memory manager." The main lesson is that a dynamic graph library needs clear separation between persistent parameters and temporary graph state, plus correct reverse-mode autodiff over a graph that is rebuilt frequently.
