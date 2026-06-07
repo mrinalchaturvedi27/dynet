@@ -748,19 +748,27 @@ dynet/
 
 ---
 
-## Side Project Roadmap: DyNet-Inspired Minimal Dynamic Graph Library
+## Side Project Roadmap: DyNet-Inspired Dynamic Graph Library
 
-This roadmap is for a smaller project inspired by DyNet, not a full DyNet rebuild. The goal is to learn and build a usable dynamic computation graph library while avoiding DyNet's full memory manager, device abstraction, autobatching, CUDA backend, and large node catalog until they are justified by profiling or project scope.
+This roadmap is for a smaller side project inspired by DyNet, with TinyTorch used as a learning reference for ML framework internals. The goal is not to rebuild DyNet or port TinyTorch line-by-line. The goal is to understand the core invariants from TinyTorch, then implement a C++/Eigen dynamic computation graph library with explicit graph lifetime, trainable parameters, reverse-mode autodiff, and a clear MNIST benchmark.
 
 ### Guiding Principle
 
-Use Eigen for numeric storage and matrix operations first. Implement custom ownership and lifetime rules only for the computation graph itself.
+Use TinyTorch for conceptual guidance and Eigen for numeric storage. Implement custom ownership and lifetime rules only for the computation graph itself.
 
 Eigen can handle:
 - Matrix/vector buffers
 - Resizing and alignment for Eigen objects
 - Matrix multiplication and elementwise operations
 - Expression-template optimization
+
+TinyTorch ideas worth borrowing:
+- Minimal tensor API: shape, arithmetic, matmul, reductions, reshape/transpose
+- Layer/module contract: `forward()` plus `parameters()`
+- Reverse-mode autograd invariants
+- Numerically stable losses, especially log-sum-exp for softmax cross entropy
+- Optimizer structure: `zero_grad()` and `step()`
+- Milestone-based validation before larger benchmarks
 
 The project still needs to handle:
 - Graph node ownership
@@ -769,6 +777,13 @@ The project still needs to handle:
 - Reverse topological traversal
 - Parameter lifetime separate from graph lifetime
 - Clearing short-lived graph state after each example or batch
+
+Do not copy initially:
+- TinyTorch's full 20-module scope
+- Notebook/CLI workflow
+- CNNs or transformers
+- Quantization, pruning, KV cache, or benchmarking suite
+- PyTorch-style hidden global autograd if the target is DyNet-style explicit graphs
 
 ### Minimal Architecture
 
@@ -831,10 +846,11 @@ struct ComputationGraph {
 
 This is intentionally simpler than DyNet. It is enough to validate autograd behavior before introducing memory pools.
 
-### Phase A: Tiny Autograd Core
+### Phase A: Tensor + Tiny Autograd Core
 
-Build this before thinking about memory pools.
+Build this before thinking about memory pools, datasets, or MNIST.
 
+- [ ] Use direct `Eigen::MatrixXf` first, or define a thin `Tensor` wrapper over Eigen
 - [ ] Define `Parameter`, `Node`, `Expression`, and `ComputationGraph`
 - [ ] Store graph nodes in creation order
 - [ ] Implement `forward(target)` by evaluating nodes from first to target
@@ -848,41 +864,79 @@ Core operations:
 - [ ] Add
 - [ ] Matrix multiply
 - [ ] Tanh
-- [ ] Sum / scalar loss
-- [ ] Mean squared error or binary cross entropy
+- [ ] ReLU
+- [ ] Sum / mean reduction
+- [ ] Mean squared error
+
+Validation:
+- [ ] Unit test forward values for every operation
+- [ ] Finite-difference gradient check for add, matmul, tanh/ReLU, and reductions
+- [ ] Confirm gradients accumulate with repeated use, e.g. `y = x * x + x`
 
 Milestone:
-- [ ] Train XOR or a tiny regression model successfully
+- [ ] Scalar and matrix autograd tests pass
 
 ### Phase B: Usable Training Loop
 
 Once the graph is correct, add the smallest model/training surface.
 
 - [ ] `ParameterCollection` or `Model` that owns all parameters
+- [ ] `Module` interface with `forward(cg, x)` and `parameters()`
+- [ ] `Linear` layer
+- [ ] Optional `Sequential` container
 - [ ] Simple random initializers
 - [ ] `zero_grad()`
 - [ ] `SimpleSGD`
-- [ ] Gradient clipping by global norm
 - [ ] Loss reporting utilities
-- [ ] Finite-difference gradient checker for a few ops
+- [ ] Tiny training loop: forward, loss, backward, step, zero grad
 
 Milestone:
-- [ ] Train a 1-hidden-layer MLP on a toy classification dataset
+- [ ] Train XOR successfully with a 1-hidden-layer MLP
 
-### Phase C: Better Operations
+### Phase C: MNIST-Ready Operations
 
-Add only operations needed by real examples.
+Add only the operations needed for a dense MNIST classifier. MNIST is the first real benchmark, but it should come after XOR and gradient checks.
 
-- [ ] ReLU
 - [ ] Sigmoid
 - [ ] Softmax
-- [ ] Negative log softmax loss
-- [ ] Concatenate
-- [ ] Pick/select rows or columns
+- [ ] Numerically stable softmax cross entropy
+- [ ] Bias broadcasting for `xW + b`
+- [ ] Argmax / accuracy metric
+- [ ] Mini-batch input nodes
 - [ ] Dropout with train/eval mode
+- [ ] Adam optimizer after SGD works
+- [ ] IDX MNIST file loader or simple converted CSV/binary loader
+
+MNIST baseline:
+
+```
+Input: 784
+Hidden: 128
+Activation: ReLU
+Output: 10
+Loss: softmax cross entropy
+Optimizer: SGD first, Adam second
+Epochs: 5-10
+Expected accuracy: ~95-98% for a correct MLP implementation
+```
+
+Benchmark fields to record:
+- [ ] Train loss per epoch
+- [ ] Test accuracy
+- [ ] Epoch time
+- [ ] Samples/sec
+- [ ] Parameter count
+- [ ] Batch size
+- [ ] Optimizer and learning rate
+- [ ] Compiler flags
+- [ ] CPU model / machine info
+
+Recommended comparison:
+- [ ] Tiny PyTorch baseline with the same `784 -> 128 -> 10` architecture
+- [ ] Same batch size, optimizer, learning rate, epochs, and train/test split
 
 Milestone:
-- [ ] Train a small MLP classifier with softmax loss
+- [ ] Train MNIST MLP and report accuracy + samples/sec
 
 ### Phase D: RNN-Style Dynamic Graph Demo
 
@@ -897,9 +951,9 @@ This is where the DyNet inspiration becomes visible. The point is not speed yet;
 Milestone:
 - [ ] Train a character-level language model or sequence classifier
 
-### Phase E: Memory Improvements Only If Needed
+### Phase E: Profiling and Memory Improvements
 
-Do not start here. First profile.
+Do not start with DyNet-style memory pools. First make MNIST correct, then profile graph execution and allocation behavior.
 
 Start with:
 - [ ] `std::vector<std::unique_ptr<Node>>`
@@ -908,6 +962,7 @@ Start with:
 
 Then optimize in this order:
 - [ ] Reserve graph node capacity with `nodes.reserve(n)`
+- [ ] Measure allocation count and time per training step
 - [ ] Replace scattered node allocations with `std::deque<NodeStorage>` or a simple typed arena
 - [ ] Reuse gradient/value matrices where shape is stable
 - [ ] Add a graph-local bump allocator only if allocation dominates runtime
@@ -920,22 +975,26 @@ Avoid initially:
 - [ ] Cross-device tensor handles
 
 Milestone:
-- [ ] Demonstrate that the simple implementation is correct, then use profiling data to justify each memory optimization
+- [ ] Show MNIST accuracy remains stable while profiling identifies whether memory optimization is justified
 
 ### Recommended Build Order
 
-1. Eigen tensor wrapper or direct `Eigen::MatrixXf`
-2. `Parameter`
-3. `Node`
-4. `ComputationGraph`
-5. `Expression`
-6. Add/matmul/tanh/loss nodes
-7. Reverse-mode autodiff
-8. SGD trainer
-9. Gradient checker
-10. Toy examples
-11. RNN example
-12. Memory pool experiments
+1. Study TinyTorch Modules 01-04 and 06-08 for concepts, not direct porting
+2. Eigen tensor wrapper or direct `Eigen::MatrixXf`
+3. `Parameter`
+4. `Node`
+5. `ComputationGraph`
+6. `Expression`
+7. Add/matmul/tanh/ReLU/reduction nodes
+8. Reverse-mode autodiff
+9. Finite-difference gradient checker
+10. `Module`, `Linear`, and SGD
+11. XOR milestone
+12. Softmax cross entropy, batching, and Adam
+13. MNIST loader and MLP benchmark
+14. Tiny PyTorch baseline comparison
+15. Embeddings and simple RNN example
+16. Profiling and memory pool experiments
 
 ### Non-Goals for the First Version
 
@@ -944,7 +1003,10 @@ Milestone:
 - No Python bindings
 - No custom allocator unless profiling proves it matters
 - No full DyNet API compatibility
-- No large operation catalog
+- No full TinyTorch clone
+- No large operation catalog beyond what MNIST and a simple RNN need
+- No CNNs until dense MNIST works
+- No transformers until the dynamic graph core is stable
 - No advanced optimizers beyond SGD/Adam until the core is stable
 
 ### Success Criteria
@@ -955,7 +1017,10 @@ The side project is successful when:
 - Forward and backward passes are correct for branching graphs
 - Parameter gradients accumulate correctly across repeated parameter use
 - The graph can be cleared without destroying model parameters
-- A small MLP and a small RNN-style model train end to end
+- XOR trains end to end
+- A dense MLP trains on MNIST with a clear accuracy and samples/sec report
+- A comparable PyTorch baseline exists for the same MNIST architecture
+- A small RNN-style model trains after MNIST
 - The code remains simple enough to explain and modify
 
-The main lesson from DyNet is not "start with a complex memory manager." The main lesson is that a dynamic graph library needs clear separation between persistent parameters and temporary graph state, plus correct reverse-mode autodiff over a graph that is rebuilt frequently.
+The main lesson from DyNet is not "start with a complex memory manager." The main lesson is that a dynamic graph library needs clear separation between persistent parameters and temporary graph state, plus correct reverse-mode autodiff over a graph that is rebuilt frequently. The main lesson from TinyTorch is to learn framework internals in small, testable milestones: tensor operations, layers, losses, autograd, optimizers, training, then a real benchmark.
